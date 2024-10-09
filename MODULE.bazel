@@ -1,0 +1,6 @@
+module(
+    name = "bazel-build-graph-explosion"
+)
+
+register_toolchains("//with_toolchains:jaden")
+register_toolchains("//with_toolchains:world")

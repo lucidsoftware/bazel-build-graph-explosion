@@ -1,0 +1,117 @@
+load(":rule.bzl", "greeting", "greeting_with_outgoing_transition", "toolchainless_greeting")
+load(":toolchain.bzl", "greeting_toolchain")
+load(":toolchain_default.bzl", "default_greeting_toolchain_name")
+load("@bazel_skylib//rules:common_settings.bzl", "string_setting")
+
+toolchain_type(
+    name = "toolchain_type"
+)
+
+string_setting(
+    name = "greeting-toolchain",
+    build_setting_default = default_greeting_toolchain_name,
+)
+
+greeting_toolchain(
+    name = "jaden",
+    subject = "Jaden",
+)
+
+greeting_toolchain(
+    name = "world",
+    subject = "world",
+)
+
+toolchainless_greeting(
+    name = "hello-no-one",
+)
+
+# Although `:hello-no-one` doesn't use the toolchain type `:toolchain_type`, Bazel builds it twice
+# in two separate output directories because it's depended on by two targets with different
+# configuration.
+#
+# See:
+# - https://bazel.build/remote/output-directories
+# - https://github.com/bazelbuild/bazel/issues/13281
+#
+# Possible solution to mitigate this redundancy:
+# - https://groups.google.com/g/bazel-discuss/c/eWRINSAQHks
+# - https://github.com/bazelbuild/bazel/discussions/22658
+greeting(
+    name = "hello-default",
+    deps = [":hello-no-one"],
+)
+
+greeting(
+    name = "hello-jaden",
+    toolchain_name = "jaden",
+    deps = [":hello-no-one"],
+)
+
+greeting(
+    name = "hello-world",
+    toolchain_name = "world",
+)
+
+# `greeting_transition` sets `:greeting-toolchain` to `""` if no toolchain name was
+# explicitly provided, which Bazel interprets as "whatever my dependent's configuration value is,
+# or, if I'm built directly, whatever the default value is".
+#
+# For that reason, two versions of `:hello-default` are built:
+# - One with the `:jaden` toolchain used
+# - One with the default toolchain (`:world`) used
+#
+# Hence, `:hello-jaden-and-default` outputs "Hello, Jaden! Also, hello to Jaden.".
+greeting(
+    name = "hello-jaden-and-default",
+    toolchain_name = "jaden",
+    deps = ["hello-default"],
+)
+
+# Because `:hello-world`, unlike `:hello-default`, sets its configuration explicitly via the
+# `greeting_transition` transition, it's built in the same output directory regardless of what
+# depends on it. For that reason, although `:hello-jaden-and-world` has a different configuration
+# than it, one version of it is built and `:hello-jaden-and-world` therefore outputs
+# "Hello, Jaden! Also, hello to world.".
+greeting(
+    name = "hello-jaden-and-world",
+    toolchain_name = "jaden",
+    deps = ["hello-world"],
+)
+
+# With an outgoing transition applied to the `deps` attribute that resets `:greeting-toolchain` to
+# its default value, `:hello-default` doesn't use `:hello-jaden-and-default-correct`'s value and a
+# single version of `:hello-default` is built.
+#
+# NOTE: Prior to Bazel 6.0, Bazel calculated the output directory for a target built with a
+# transition as the hash of that transition's changes. That meant that even if you reset a
+# configuration value to its default value, the value would be "tainted" and the default output
+# directory wouldn't be used.
+#
+# In Bazel 6.0, an option, `--experimental_output_directory_naming_scheme`, was added to override
+# this behavior, computing the output directory as the hash against the "baseline" configuration
+# (the set of configuration values supplied on the command line) when the option is set to
+# `diff_against_baseline`. See:
+# - https://www.buildbuddy.io/blog/whats-new-in-bazel-6-0/
+# - https://github.com/bazelbuild/bazel/commit/50dc4463b8daeceb01403c3390532a8953ce24bc
+# - https://github.com/bazelbuild/bazel/issues/12171
+#
+# In Bazel 7.0, `diff_against_baseline`
+# [became the default](https://github.com/bazelbuild/bazel/pull/16910).
+#
+# The original issue regarding multiple versions of targets being built for identical configurations
+# remains open, but I'm unable to reproduce it:
+# https://github.com/bazelbuild/bazel/issues/14023
+greeting_with_outgoing_transition(
+    name = "hello-jaden-and-default-correct",
+    toolchain_name = "jaden",
+    deps = ["hello-default"],
+)
+
+# We demonstrate that despite `:greeting-toolchain` being reset to its default value,
+# configuration transitions still work and, if depended on, `:hello-jaden` will still be built with
+# `:greeting-toolchain` set to `jaden`.
+greeting_with_outgoing_transition(
+    name = "hello-default-and-jaden",
+    deps = ["hello-jaden"],
+)
