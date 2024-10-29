@@ -1,0 +1,16 @@
+load(":rules.bzl", "copy_file", "static_file")
+
+static_file(
+    name = "file",
+    content = "Hello, world!",
+)
+
+copy_file(
+    name = "copied-file-1",
+    input = ":file",
+)
+
+copy_file(
+    name = "copied-file-2",
+    input = ":file",
+)

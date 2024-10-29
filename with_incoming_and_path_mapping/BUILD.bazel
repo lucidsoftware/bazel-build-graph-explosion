@@ -1,0 +1,52 @@
+load(":rules.bzl", "copy_file", "static_file")
+load("@bazel_skylib//rules:common_settings.bzl", "string_setting")
+
+string_setting(
+    name = "dummy-setting",
+    build_setting_default = "foo",
+)
+
+config_setting(
+    name = "dummy-setting-foo",
+    flag_values = {
+        ":dummy-setting": "foo",
+    },
+)
+
+config_setting(
+    name = "dummy-setting-bar",
+    flag_values = {
+        ":dummy-setting": "bar",
+    },
+)
+
+static_file(
+    name = "file",
+    content = "Hello, world!",
+)
+
+copy_file(
+    name = "copied-file",
+    input = ":file",
+)
+
+copy_file(
+    name = "copied-file-with-transition",
+    dummy_setting = "bar",
+    input = ":file",
+)
+
+static_file(
+    name = "dynamic-file",
+    content = select({
+        ":dummy-setting-foo": "The setting is foo.",
+        ":dummy-setting-bar": "The setting is bar.",
+        "//conditions:default": "The setting is neither foo, nor bar.",
+    }),
+)
+
+copy_file(
+    name = "copied-dynamic-file",
+    dummy_setting = "bar",
+    input = ":dynamic-file",
+)

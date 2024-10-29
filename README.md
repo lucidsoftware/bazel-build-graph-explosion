@@ -1,68 +1,37 @@
-# bazel-build-graph-explosion
 
-This repository demonstrates [toolchains](https://bazel.build/extending/toolchains) and
-[configuration transitions](https://bazel.build/extending/config#user-defined-transitions) in Bazel,
-and their limitations.
+This repository demonstrates Bazel
+[configuration transitions](https://bazel.build/extending/config#user-defined-transitions) and their
+limitations.
+
+Specifically, it investigates the issue of targets being unnecessarily built multiple times when
+transitions are used.
 
 ## Repository Strucutre
 
-The repository is divided into two packages:
-- `with_toolchains`
-- `without_toolchains`
+The repository is divided into four packages:
+1. `without_transitions`
+2. `with_incoming`
+3. `with_incoming_and_outgoing`
+4. `with_incoming_and_path_mapping`
 
-Both packages contain separate of implementations of the `greeting` rule, which accepts a subject
-and outputs a file containing a greeting addressed to that subject:
+Each package separately defines two rules: `static_file` and `copy_file`. `static_file` executes a
+single action with no inputs and a single output. `copy_file` executes a single action with a
+single input and which produces a single output by copying that input.
 
-```
-$ bazel build //without_toolchains:hello-world
-$ cat bazel-bin/without_toolchains/hello-world_greeting.txt
-Hello, world!
-```
+While we encourage you to read the `README.md` contained in each package to understand how they use
+transitions differently, we provide a brief summary of each package below.
 
-Greetings can also have dependencies, in which case those dependencies' subjects will be added to
-the greeting:
+While `without_transitions` defines the rules as you'd expect, `with_incoming` adds an
+incoming transition to demonstrate targets being built multiple times in separate
+[output directories](https://bazel.build/remote/output-directories), due to the configuration under
+which they're built differing. Without the prescence of an
+[outgoing transition](https://bazel.build/extending/config#outgoing-edge-transitions) or
+[path mapping](https://github.com/bazelbuild/bazel/discussions/22658), Bazel isn't smart enought to
+realize that their output can be shared across configurations.
 
-```
-$ bazel build //without_toolchains:hello-jaden-and-world
-$ cat bazel-bin/without_toolchains/hello-jaden-and-world_greeting.txt
-Hello, Jaden! Also, hello to world.
-```
-
-The core difference between `without_toolchains` and `with_toolchains` is that in the former, the
-subject is provided as an attribute, whereas in the latter, it's provided as a toolchain.
-
-## Build Graph Redundancies
-
-Often, we talk about "multiple versions" of a package being built. To see what's meant by that, run:
-
-```sh
-bazel cquery 'kind("^greeting(_with_outgoing_transition)? rule$", //with_toolchains:*)' --output graph |
-    dot -Grankdir=LR -Tsvg
-```
-
-to generate an SVG of the build graph for the `with_toolchains` package:
-
-![`with_toolchains` build graph](graphs/with_toolchains.svg)
-
-Note that this is distinct from the dependency graph, which can be viewed with:
-
-```sh
-bazel query 'kind("^greeting(_with_outgoing_transition)? rule$", //with_toolchains/...)' \
-    --output graph \
-    --nograph:factored
-```
-
-The build graph is built at [analysis-time](https://bazel.build/extending/concepts#evaluation-model)
-and takes configuration into account. The dependency graph is built at loading time and doesn't.
-
-Notice how every target has a single node in the dependency graph, but
-potentially multipe targets in the build graph. `with_toolchains/BUILD.bazel` explains why some
-targets are unnecessarily built multiple times and how that can be mitigated. Also notice how when
-toolchains and configuration transitions aren't used, every target has a single node in the
-build graph:
-
-```sh
-bazel cquery 'kind("^greeting rule$", //without_toolchains:*)' --output graph | dot -Grankdir=LR -Tsvg
-```
-
-![`without_toolchains` build graph](graphs/without_toolchains.svg)
+`with_incoming_and_outgoing` and `with_incoming_and_path_mapping` showcase two different approaches
+to solving this problem. `with_incoming_and_outgoing` adds an outgoing transition that resets
+configuration to its default state across dependency boundaries, ensuring that every target is built
+only once. `with_incoming_and_outgoing` leverages path mapping and action deduplication for a more
+elegant solution that still allows for a target to be built differently, depending on the
+configuration.
